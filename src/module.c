@@ -3,14 +3,14 @@
 
 #include "module.h"
 #include <zephyr/drivers/gpio.h>
-//#include <zephyr/logging/log.h>
+#include <zephyr/logging/log.h>
 #ifdef EMULATE_SENSORS
 #include "zephyr/random/random.h"
 #endif
-// LOG_MODULE_REGISTER(sensor_data_send, LOG_LEVEL_INF);
+LOG_MODULE_REGISTER(module, LOG_LEVEL_INF);
 char sensor_data_send_msgq_buffer[10 * sizeof(struct data_item_type)];
 struct k_msgq sensor_data_send_msgq;
-
+const struct device *uart1 = DEVICE_DT_GET(DT_NODELABEL(uart1));
 //useless
 // void message_queue_put_handler (uint32_t *id, uint32_t *temp){
 // 	struct data_item_type dat;
@@ -27,13 +27,14 @@ char command_status	[] = "status";
 
 int pooling_delay_time = 1000;
 bool tx_data_state = 0;
-bool tx_data_format = 0;
+bool tx_data_format = 1;
 
 // mdl_msgq_init();
 // mdl_msgq_get();
 // mdl_msgq_put();
 // mdl_sleep();
 // mdl_console_send_msg();
+// mdl_uart_init();
 // mdl_uart_irq_update();
 // mdl_uart_irq_rx_ready();
 // mdl_uart_fifo_read();
@@ -41,10 +42,30 @@ bool tx_data_format = 0;
 // #ifdef EMULATE_SENSORS
 // mdl_random();
 // #endif
+// mdl_log();
+
+void mdl_uart_init(void){
+	#if FREERTOS
+
+	#else
+		// const struct device *uart1 = DEVICE_DT_GET(DT_NODELABEL(uart1));
+		
+		struct uart_config uart_cfg = {
+		.baudrate = 115200,
+		.parity = UART_CFG_PARITY_NONE,
+		.stop_bits = UART_CFG_STOP_BITS_1,
+		.flow_ctrl = UART_CFG_FLOW_CTRL_NONE,
+		.data_bits = UART_CFG_DATA_BITS_8,
+		};
+
+		uart_configure(uart1, &uart_cfg);
+	#endif
+}
+
 
 void sensor_data_send(void *d0, void *d1, void *d2) {
-	
-	// LOG_INF("thread init: sensor_data_send_tid->complete");
+	mdl_uart_init();
+	LOG_INF("thread init: sensor_data_send_tid->complete");
     while(1) {
 		struct data_item_type q_dat;
 		if (k_msgq_get(&sensor_data_send_msgq, &q_dat, K_NO_WAIT)) {
@@ -53,12 +74,42 @@ void sensor_data_send(void *d0, void *d1, void *d2) {
 		}
 		else{
 			if(tx_data_format){
-			printf("sensor: %u; ", q_dat.id);
-			printf("tem: %u;\n", q_dat.temp);				
+				char mmm [20];
+
+				sprintf(mmm, "sensor: %u; ", q_dat.id);
+				int msg_len = strlen(mmm);
+
+				for (int i = 0; i < msg_len; i++) {
+					uart_poll_out(uart1, mmm[i]);
+				}
+
+				sprintf(mmm, "temp: %u;\r\n", q_dat.temp);
+				msg_len = strlen(mmm);
+
+				for (int i = 0; i < msg_len; i++) {
+					uart_poll_out(uart1, mmm[i]);
+				}
+			// printf("sensor: %u; ", q_dat.id);
+			// printf("tem: %u;\n", q_dat.temp);				
 			}
 			else {
-			printf("%u:", q_dat.id);
-			printf("%u;", q_dat.temp);				
+				// char myass[] = "myblackass";
+				char mmm [10];
+
+				sprintf(mmm, "%u:", q_dat.id);
+				int msg_len = strlen(mmm);
+
+				for (int i = 0; i < msg_len; i++) {
+					uart_poll_out(uart1, mmm[i]);
+				}
+
+				sprintf(mmm, "%u;", q_dat.temp);
+				msg_len = strlen(mmm);
+
+				for (int i = 0; i < msg_len; i++) {
+					uart_poll_out(uart1, mmm[i]);
+				}
+				
 			}
 			
 
@@ -116,14 +167,15 @@ void print_uart(char *buf)
 	}
 }
 void sensor_dete_req(struct data_item_type *result){
-	#ifdef EMULATE_SENSORS
-		 static int sensor_number;
-		 uint8_t res;
-		 k_sleep(K_MSEC(1));
-		 sys_rand_get(&res, sizeof(res));
+	#if EMULATE_SENSORS
+		static int sensor_number;
+		uint8_t res = 0;
+		k_sleep(K_MSEC(1));
+		sys_rand_get(&res, sizeof(res));
 		result->id = sensor_number;
 		result->temp = (uint32_t) res;
 		sensor_number++;
+		if(sensor_number > 257) sensor_number = 0;
 	#else
 		// real sensor data request
 	#endif
@@ -133,7 +185,7 @@ void sensor_pool (void *d0, void *d1, void *d2){
 	char tx_buf[MSG_SIZE];
 
 	if (!device_is_ready(uart_dev)) {
-		printk("UART device not found!");
+		LOG_ERR("UART device not found!");
 		return 0;
 	}
 
@@ -142,16 +194,16 @@ void sensor_pool (void *d0, void *d1, void *d2){
 	 int ret = uart_irq_callback_user_data_set(uart_dev, serial_cb, NULL);
 	if (ret < 0) {
 		if (ret == -ENOTSUP) {
-			printk("Interrupt-driven UART API support not enabled\n");
+			LOG_ERR("Interrupt-driven UART API support not enabled\n"); //printk
 		} else if (ret == -ENOSYS) {
-			printk("UART device does not support interrupt-driven API\n");
+			LOG_ERR("UART device does not support interrupt-driven API\n");
 		} else {
-			printk("Error setting UART callback: %d\n", ret);
+			LOG_ERR("Error setting UART callback: %d\n", ret);
 		}
 		return 0;
 	}
 	uart_irq_rx_enable(uart_dev);
-	// LOG_INF("thread init: sensor_pool_tid->complete");
+	LOG_INF("thread init: sensor_pool_tid->complete");
 	while (1) {
 
 		if (k_msgq_get(&uart_msgq, &tx_buf, K_NO_WAIT)){
@@ -163,24 +215,26 @@ void sensor_pool (void *d0, void *d1, void *d2){
 				char time [strlen(&tx_buf) - 5];
 				strncpy(&time, &tx_buf[5], strlen(&tx_buf) - 5);
 				pooling_delay_time = atoi(time);
+				LOG_INF("command accepted: pooling time->%u msec", pooling_delay_time);
 			}
 			else if (0 == strcmp (tx_buf, command_read)){
 				tx_data_state = 1;
-				struct data_item_type dat; 
-				dat.id = 1;
-				k_msgq_put(&sensor_data_send_msgq, &dat, K_NO_WAIT);			
+				LOG_INF("command accepted: reading start");	
 			}
 			else if (0 == strcmp (tx_buf, command_stop)){
-				tx_data_state = 0;
-				struct data_item_type dat; 
-				dat.id = 0;
-				k_msgq_put(&sensor_data_send_msgq, &dat, K_NO_WAIT);		
+				tx_data_state = 0;	
+				LOG_INF("command accepted: reading stop");	
 			}
 			else if(0 == strcmp (tx_buf, command_toggle)){
 				tx_data_format = !tx_data_format;
+				LOG_INF("command accepted: toggle data format");	
 			}
 			else if(0 == strcmp (tx_buf, command_status)){
-
+				LOG_INF("status: reading->%s; fotmat->%s; time->%u msec;", tx_data_state ? ("start"):("stop"),
+						tx_data_format ? ("full"):("bin"), pooling_delay_time);	
+			}
+			else{
+				LOG_INF("illegal command");
 			}
 		}
 

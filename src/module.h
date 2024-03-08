@@ -1,3 +1,6 @@
+#ifndef _MODULE_H
+#define _MODULE_H
+
 #include <stdint.h>
 #include "zephyr/kernel.h"
 #include "zephyr/drivers/gpio.h"
@@ -17,8 +20,9 @@ struct data_item_type {
     uint32_t temp;
 };
 
-void message_queue_put_handler (uint32_t *id, uint32_t *temp);
 void sensor_data_send(void *d0, void *d1, void *d2);
 void sensor_pool (void *d0, void *d1, void *d2);
 void serial_cb(const struct device *dev, void *user_data);
 void sensor_dete_req(struct data_item_type *result);
+
+#endif //_MODULE_H
