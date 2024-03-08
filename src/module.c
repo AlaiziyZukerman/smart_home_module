@@ -3,12 +3,13 @@
 
 #include "module.h"
 #include <zephyr/drivers/gpio.h>
+//#include <zephyr/logging/log.h>
 #ifdef EMULATE_SENSORS
 #include "zephyr/random/random.h"
 #endif
-
-char my_msgq_buffer[10 * sizeof(struct data_item_type)];
-struct k_msgq my_msgq;
+// LOG_MODULE_REGISTER(sensor_data_send, LOG_LEVEL_INF);
+char sensor_data_send_msgq_buffer[10 * sizeof(struct data_item_type)];
+struct k_msgq sensor_data_send_msgq;
 
 //useless
 // void message_queue_put_handler (uint32_t *id, uint32_t *temp){
@@ -28,24 +29,25 @@ int pooling_delay_time = 1000;
 bool tx_data_state = 0;
 bool tx_data_format = 0;
 
-mdl_msgq_init();
-mdl_msgq_get();
-mdl_msgq_put();
-mdl_sleep();
-mdl_console_send_msg();
-mdl_uart_irq_update();
-mdl_uart_irq_rx_ready();
-mdl_uart_fifo_read();
-mdl_uart_send_byte();
-#ifdef EMULATE_SENSORS
-mdl_random();
-#endif
+// mdl_msgq_init();
+// mdl_msgq_get();
+// mdl_msgq_put();
+// mdl_sleep();
+// mdl_console_send_msg();
+// mdl_uart_irq_update();
+// mdl_uart_irq_rx_ready();
+// mdl_uart_fifo_read();
+// mdl_uart_send_byte();
+// #ifdef EMULATE_SENSORS
+// mdl_random();
+// #endif
 
 void sensor_data_send(void *d0, void *d1, void *d2) {
 	
+	// LOG_INF("thread init: sensor_data_send_tid->complete");
     while(1) {
 		struct data_item_type q_dat;
-		if (k_msgq_get(&my_msgq, &q_dat, K_NO_WAIT)) {
+		if (k_msgq_get(&sensor_data_send_msgq, &q_dat, K_NO_WAIT)) {
 			k_sleep(K_MSEC(100));
 			continue;
 		}
@@ -149,7 +151,7 @@ void sensor_pool (void *d0, void *d1, void *d2){
 		return 0;
 	}
 	uart_irq_rx_enable(uart_dev);
-
+	// LOG_INF("thread init: sensor_pool_tid->complete");
 	while (1) {
 
 		if (k_msgq_get(&uart_msgq, &tx_buf, K_NO_WAIT)){
@@ -166,13 +168,13 @@ void sensor_pool (void *d0, void *d1, void *d2){
 				tx_data_state = 1;
 				struct data_item_type dat; 
 				dat.id = 1;
-				k_msgq_put(&my_msgq, &dat, K_NO_WAIT);			
+				k_msgq_put(&sensor_data_send_msgq, &dat, K_NO_WAIT);			
 			}
 			else if (0 == strcmp (tx_buf, command_stop)){
 				tx_data_state = 0;
 				struct data_item_type dat; 
 				dat.id = 0;
-				k_msgq_put(&my_msgq, &dat, K_NO_WAIT);		
+				k_msgq_put(&sensor_data_send_msgq, &dat, K_NO_WAIT);		
 			}
 			else if(0 == strcmp (tx_buf, command_toggle)){
 				tx_data_format = !tx_data_format;
@@ -186,7 +188,7 @@ void sensor_pool (void *d0, void *d1, void *d2){
 			//put message to queue for transmit data
 			struct data_item_type req_result;
 			sensor_dete_req(&req_result);
-			k_msgq_put(&my_msgq, &req_result, K_NO_WAIT);
+			k_msgq_put(&sensor_data_send_msgq, &req_result, K_NO_WAIT);
 		}		
 	}
 	return 0;
