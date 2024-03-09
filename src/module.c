@@ -7,17 +7,16 @@
 #ifdef EMULATE_SENSORS
 #include "zephyr/random/random.h"
 #endif
+
+#define UART_DEVICE_NODE DT_CHOSEN(zephyr_shell_uart)
+#define MSG_SIZE 10
+K_MSGQ_DEFINE(uart_msgq, MSG_SIZE, 10, 4);
+
 LOG_MODULE_REGISTER(module, LOG_LEVEL_INF);
-char sensor_data_send_msgq_buffer[10 * sizeof(struct data_item_type)];
+char sensor_data_send_msgq_buffer[256 * sizeof(struct data_item_type)];
 struct k_msgq sensor_data_send_msgq;
+
 const struct device *uart1 = DEVICE_DT_GET(DT_NODELABEL(uart1));
-//useless
-// void message_queue_put_handler (uint32_t *id, uint32_t *temp){
-// 	struct data_item_type dat;
-// 	dat.id = &id;
-// 	dat.temp = &temp;
-// 	k_msgq_put(&my_msgq, &dat, K_NO_WAIT);
-// }
 
 char command_time	[] = "time:";
 char command_read	[] = "read";
@@ -28,6 +27,11 @@ char command_status	[] = "status";
 int pooling_delay_time = 1000;
 bool tx_data_state = 0;
 bool tx_data_format = 1;
+
+static const struct device *const uart_dev = DEVICE_DT_GET(UART_DEVICE_NODE);
+
+static char rx_buf[MSG_SIZE];
+static int rx_buf_pos;
 
 // mdl_msgq_init();
 // mdl_msgq_get();
@@ -47,9 +51,7 @@ bool tx_data_format = 1;
 void mdl_uart_init(void){
 	#if FREERTOS
 
-	#else
-		// const struct device *uart1 = DEVICE_DT_GET(DT_NODELABEL(uart1));
-		
+	#else		
 		struct uart_config uart_cfg = {
 		.baudrate = 115200,
 		.parity = UART_CFG_PARITY_NONE,
@@ -57,7 +59,6 @@ void mdl_uart_init(void){
 		.flow_ctrl = UART_CFG_FLOW_CTRL_NONE,
 		.data_bits = UART_CFG_DATA_BITS_8,
 		};
-
 		uart_configure(uart1, &uart_cfg);
 	#endif
 }
@@ -88,12 +89,9 @@ void sensor_data_send(void *d0, void *d1, void *d2) {
 
 				for (int i = 0; i < msg_len; i++) {
 					uart_poll_out(uart1, mmm[i]);
-				}
-			// printf("sensor: %u; ", q_dat.id);
-			// printf("tem: %u;\n", q_dat.temp);				
+				}			
 			}
 			else {
-				// char myass[] = "myblackass";
 				char mmm [10];
 
 				sprintf(mmm, "%u:", q_dat.id);
@@ -118,15 +116,6 @@ void sensor_data_send(void *d0, void *d1, void *d2) {
     }
 }
 
-#define UART_DEVICE_NODE DT_CHOSEN(zephyr_shell_uart)
-#define MSG_SIZE 10
-
-K_MSGQ_DEFINE(uart_msgq, MSG_SIZE, 10, 4);
-
-static const struct device *const uart_dev = DEVICE_DT_GET(UART_DEVICE_NODE);
-
-static char rx_buf[MSG_SIZE];
-static int rx_buf_pos;
 
 void serial_cb(const struct device *dev, void *user_data)
 {
@@ -208,12 +197,17 @@ void sensor_pool (void *d0, void *d1, void *d2){
 
 		if (k_msgq_get(&uart_msgq, &tx_buf, K_NO_WAIT)){
 			//recive parameters and handl
-			k_sleep(K_MSEC(pooling_delay_time));
+			k_msleep(pooling_delay_time);
 		}
 		else {
 			if (0 == strncmp(tx_buf, command_time, 5)){
 				char time [strlen(&tx_buf) - 5];
 				strncpy(&time, &tx_buf[5], strlen(&tx_buf) - 5);
+				int check_time = atoi(time);
+				if (check_time < 100 || check_time > 8000){
+					LOG_ERR("illegal time. time range 100...8000 msec");
+					continue;
+				}
 				pooling_delay_time = atoi(time);
 				LOG_INF("command accepted: pooling time->%u msec", pooling_delay_time);
 			}
