@@ -5,9 +5,11 @@
 #include "zephyr/kernel.h"
 #include "zephyr/drivers/gpio.h"
 #include <zephyr/drivers/uart.h>
+#include <zephyr/logging/log.h>
 
 #define FREERTOS            0
 #define EMULATE_SENSORS     1
+#define DEEP_SLEEP          1
 
 #define MY_STACK_SIZE       500
 #define MY_PRIORITY         5

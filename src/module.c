@@ -4,9 +4,21 @@
 #include "module.h"
 #include <zephyr/drivers/gpio.h>
 #include <zephyr/logging/log.h>
-#ifdef EMULATE_SENSORS
+
+#if EMULATE_SENSORS
 #include "zephyr/random/random.h"
 #endif
+
+#if DEEP_SLEEP
+#include <zephyr/kernel.h>
+#include <zephyr/pm/pm.h>
+#include <zephyr/pm/device.h>
+#include <zephyr/pm/policy.h>
+#include <zephyr/drivers/gpio.h>
+#include "esp_sleep.h"
+#define WAKEUP_TIME_SEC		(5)
+#endif
+
 
 #define UART_DEVICE_NODE DT_CHOSEN(zephyr_shell_uart)
 #define MSG_SIZE 10
@@ -63,14 +75,13 @@ void mdl_uart_init(void){
 	#endif
 }
 
-
 void sensor_data_send(void *d0, void *d1, void *d2) {
 	mdl_uart_init();
 	LOG_INF("thread init: sensor_data_send_tid->complete");
     while(1) {
 		struct data_item_type q_dat;
 		if (k_msgq_get(&sensor_data_send_msgq, &q_dat, K_NO_WAIT)) {
-			k_sleep(K_MSEC(100));
+			k_msleep(100);
 			continue;
 		}
 		else{
@@ -107,15 +118,10 @@ void sensor_data_send(void *d0, void *d1, void *d2) {
 				for (int i = 0; i < msg_len; i++) {
 					uart_poll_out(uart1, mmm[i]);
 				}
-				
 			}
-			
-
 		}
-		
     }
 }
-
 
 void serial_cb(const struct device *dev, void *user_data)
 {
@@ -159,7 +165,6 @@ void sensor_dete_req(struct data_item_type *result){
 	#if EMULATE_SENSORS
 		static int sensor_number;
 		uint8_t res = 0;
-		k_sleep(K_MSEC(1));
 		sys_rand_get(&res, sizeof(res));
 		result->id = sensor_number;
 		result->temp = (uint32_t) res;

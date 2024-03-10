@@ -1,17 +1,16 @@
 #include <zephyr/kernel.h>
 #include <zephyr/drivers/gpio.h>
 #include "module.h"
-#include <zephyr/logging/log.h>
 
- #define SLEEP_TIME_MS   1
+#define SLEEP_TIME_MS   1
 
 #define MY_STACK_SIZE 500
 #define MY_PRIORITY 5
 
 LOG_MODULE_REGISTER(main, LOG_LEVEL_INF);
 
- extern char sensor_data_send_msgq_buffer[10 * sizeof(struct data_item_type)];
- extern struct k_msgq sensor_data_send_msgq;
+extern char sensor_data_send_msgq_buffer[10 * sizeof(struct data_item_type)];
+extern struct k_msgq sensor_data_send_msgq;
 
 struct k_thread sensor_data_send_tid, sensor_pool_tid;
 
